@@ -1,0 +1,9 @@
+FROM postgres:18-alpine
+
+RUN set -eux; \
+    apk add --no-cache postgis; \
+    mkdir -p /usr/local/share/postgresql/extension /usr/local/lib/postgresql; \
+    cp -a /usr/share/postgresql18/extension/postgis* /usr/local/share/postgresql/extension/; \
+    cp -a /usr/share/postgresql18/extension/address_standardizer* /usr/local/share/postgresql/extension/; \
+    cp -a /usr/lib/postgresql18/postgis*.so /usr/local/lib/postgresql/; \
+    cp -a /usr/lib/postgresql18/address_standardizer*.so /usr/local/lib/postgresql/

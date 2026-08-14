@@ -1,0 +1,14 @@
+{
+  "requestId": "scope-e2e-001",
+  "sessionId": "call-session-001",
+  "alarmId": "alarm-001",
+  "sourceType": "CTI_COORDINATE",
+  "baseStationCoordinate": {
+    "longitude": 118.3341998168,
+    "latitude": 23.3493569342,
+    "coordinateSystem": "WGS84",
+    "accuracyMeters": 10,
+    "capturedAt": "2026-08-04T14:06:37.000+08:00"
+  },
+  "radiusMeters": 2000
+}

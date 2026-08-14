@@ -1,0 +1,6 @@
+{
+  "requestId": "page-request-001",
+  "sourceTypes": ["BUILDING", "AOI", "POI", "LOI"],
+  "pageSize": 1000,
+  "cursor": null
+}

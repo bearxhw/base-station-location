@@ -1,0 +1,36 @@
+{
+  "id": "542171ec-e893-37b2-a246-73275c44a82d",
+  "specversion": "1.0",
+  "source": "ids-location-address-scope",
+  "type": "address.scope.ready.v1",
+  "time": "2026-08-04T14:06:37.304+08:00",
+  "subject": "992488ca-d04e-4ad3-bd62-f4eb8a82ef47",
+  "datacontenttype": "application/json",
+  "data": {
+    "eventId": "542171ec-e893-37b2-a246-73275c44a82d",
+    "eventType": "address.scope.ready.v1",
+    "schemaVersion": "1.0",
+    "occurredAt": "2026-08-04T14:06:37.304+08:00",
+    "requestId": "scope-e2e-001",
+    "sessionId": "call-session-001",
+    "alarmId": "alarm-001",
+    "addressScopeRef": {
+      "scopeId": "992488ca-d04e-4ad3-bd62-f4eb8a82ef47",
+      "locationResolutionId": "ad018390-9628-4d02-be61-999173461b14",
+      "locationResolutionVersion": 1,
+      "inventoryVersion": "REAL_AI_TILED_1M_V1",
+      "scopeStatus": "READY"
+    },
+    "locationScope": {
+      "centerLongitude": 116.33,
+      "centerLatitude": 39.92,
+      "radiusMeters": 2000.0,
+      "coordinateSystem": "WGS84",
+      "shapeType": "CIRCLE",
+      "positioningMethod": "BASE_STATION_RADIUS_CIRCLE",
+      "evidenceLevel": "L1_BASE_STATION_COORDINATE_ONLY"
+    },
+    "itemsPath": "/api/v1/address-scopes/992488ca-d04e-4ad3-bd62-f4eb8a82ef47/items",
+    "queryPath": "/api/v1/location/resolutions/ad018390-9628-4d02-be61-999173461b14/address-scope/query"
+  }
+}

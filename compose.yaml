@@ -1,0 +1,122 @@
+name: wjx-location
+
+services:
+  postgis:
+    image: wjx-location-postgis:18-3.6
+    container_name: wjx-location-postgis
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${LOCATION_DB_NAME:-dispatch_assist}
+      POSTGRES_USER: ${LOCATION_DB_USER:-location_app}
+      POSTGRES_PASSWORD: ${LOCATION_DB_PASSWORD:?LOCATION_DB_PASSWORD must be set in .env}
+    ports:
+      - "${LOCATION_DB_BIND:-0.0.0.0}:${LOCATION_DB_PORT:-15432}:5432"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - test "$$(cat /proc/1/comm)" = postgres && pg_isready -U ${LOCATION_DB_USER:-location_app} -d ${LOCATION_DB_NAME:-dispatch_assist}
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 30s
+    volumes:
+      - location_postgis_data:/var/lib/postgresql
+      - ./db/migration/V1__init_location_hotword.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./db/demo/V2__seed_demo_data.sql:/docker-entrypoint-initdb.d/02-demo-data.sql:ro
+      - ./db/migration/V3__hotword_scene_task_composition.sql:/docker-entrypoint-initdb.d/03-hotword-scene-task.sql:ro
+      - ./db/migration/V4__session_hotword_mount_and_location_areas.sql:/docker-entrypoint-initdb.d/04-session-location-areas.sql:ro
+      - ./db/migration/V5__location_postgis_runtime.sql:/docker-entrypoint-initdb.d/05-location-postgis-runtime.sql:ro
+      - ./db/migration/V6__location_online_query_indexes.sql:/docker-entrypoint-initdb.d/06-location-online-query-indexes.sql:ro
+      - ./db/migration/V7__building_inventory_spatial_search.sql:/docker-entrypoint-initdb.d/07-building-inventory-spatial-search.sql:ro
+      - ./db/migration/V8__location_address_subset.sql:/docker-entrypoint-initdb.d/08-location-address-subset.sql:ro
+      - ./db/migration/V9__precompute_address_inventory_terms.sql:/docker-entrypoint-initdb.d/09-precompute-address-inventory-terms.sql:ro
+      - ./db/migration/V10__address_scope_query_indexes.sql:/docker-entrypoint-initdb.d/10-address-scope-query-indexes.sql:ro
+      - ./db/migration/V11__fused_location_scope.sql:/docker-entrypoint-initdb.d/11-fused-location-scope.sql:ro
+      - ./db/migration/V12__direct_base_station_coordinate.sql:/docker-entrypoint-initdb.d/12-direct-base-station-coordinate.sql:ro
+      - ./db/migration/V13__coordinate_location_hot_path_indexes.sql:/docker-entrypoint-initdb.d/13-coordinate-location-hot-path-indexes.sql:ro
+      - ./db/migration/V14__reusable_logical_address_scope.sql:/docker-entrypoint-initdb.d/14-reusable-logical-address-scope.sql:ro
+      - ./db/migration/V15__address_scope_event_relay.sql:/docker-entrypoint-initdb.d/15-address-scope-event-relay.sql:ro
+      - ./db/demo/V10__seed_realistic_location_scenarios.sql:/docker-entrypoint-initdb.d/16-realistic-location-scenarios.sql:ro
+      - ./db/demo/V11__create_ai_source_compatible_schema.sql:/docker-entrypoint-initdb.d/17-ai-source-compatible-schema.sql:ro
+      - ./db/demo/V12__seed_ai_source_compatible_scenarios.sql:/docker-entrypoint-initdb.d/18-ai-source-compatible-data.sql:ro
+      - ./db/demo/V13__sync_ai_source_to_read_model.sql:/docker-entrypoint-initdb.d/19-sync-address-read-model.sql:ro
+      - ./db/migration/V16__address_scope_summary_and_stream_views.sql:/docker-entrypoint-initdb.d/20-address-scope-summary.sql:ro
+    networks:
+      - location_internal
+
+  rabbitmq:
+    image: rabbitmq:4.3.4-management-alpine
+    container_name: wjx-location-rabbitmq
+    hostname: wjx-location-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${LOCATION_RABBITMQ_ADMIN_USER:-location_admin}
+      RABBITMQ_DEFAULT_PASS: ${LOCATION_RABBITMQ_ADMIN_PASSWORD:?LOCATION_RABBITMQ_ADMIN_PASSWORD must be set in .env}
+      RABBITMQ_DEFAULT_VHOST: ${LOCATION_RABBITMQ_VHOST:-/location}
+    ports:
+      - "${LOCATION_RABBITMQ_BIND:-0.0.0.0}:${LOCATION_RABBITMQ_PORT:-5672}:5672"
+      - "${LOCATION_RABBITMQ_MANAGEMENT_BIND:-127.0.0.1}:${LOCATION_RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 20s
+    volumes:
+      - location_rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - location_internal
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: wjx-location-service:1.0.0
+    container_name: wjx-location-service
+    restart: unless-stopped
+    depends_on:
+      postgis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: 8080
+      LOCATION_STORAGE: postgis
+      LOCATION_POSTGIS_URL: jdbc:postgresql://postgis:5432/${LOCATION_DB_NAME:-dispatch_assist}
+      LOCATION_POSTGIS_USERNAME: ${LOCATION_DB_USER:-location_app}
+      LOCATION_POSTGIS_PASSWORD: ${LOCATION_DB_PASSWORD:?LOCATION_DB_PASSWORD must be set in .env}
+      LOCATION_POSTGIS_JIT_ENABLED: "false"
+      LOCATION_POSTGIS_POOL_INITIAL_SIZE: 5
+      LOCATION_POSTGIS_POOL_MAX_SIZE: 32
+      LOCATION_MAX_NEIGHBORS: 6
+      LOCATION_SPATIAL_MAX_DISTANCE_METERS: 5000
+      ADDRESS_SCOPE_ENABLED: "true"
+      ADDRESS_SCOPE_ACTIVE_INVENTORY_VERSION: ${LOCATION_ACTIVE_INVENTORY_VERSION:-REALISTIC_AI_SOURCE_V1}
+      ADDRESS_SCOPE_TTL_SECONDS: 86400
+      ADDRESS_SCOPE_EVENT_ENABLED: "true"
+      ADDRESS_SCOPE_EVENT_TRANSPORT: rabbitmq
+      LOCATION_RABBITMQ_HOST: rabbitmq
+      LOCATION_RABBITMQ_PORT: 5672
+      LOCATION_RABBITMQ_VHOST: ${LOCATION_RABBITMQ_VHOST:-/location}
+      LOCATION_RABBITMQ_USERNAME: ${LOCATION_RABBITMQ_PUBLISHER_USER:-location_publisher}
+      LOCATION_RABBITMQ_PASSWORD: ${LOCATION_RABBITMQ_PUBLISHER_PASSWORD:?LOCATION_RABBITMQ_PUBLISHER_PASSWORD must be set in .env}
+      LOCATION_RABBITMQ_EXCHANGE: location.address-scope.v1
+      LOCATION_RABBITMQ_DLX: location.address-scope.dlx.v1
+      LOCATION_RABBITMQ_ROUTING_KEY: address.scope.ready.v1
+      LOCATION_RABBITMQ_HOTWORD_QUEUE: location.address-scope.hotword.v1
+      LOCATION_RABBITMQ_ADDRESSBOT_QUEUE: location.address-scope.addressbot.v1
+      LOCATION_RABBITMQ_CONFIRM_TIMEOUT_MILLIS: 3000
+    ports:
+      - "${LOCATION_HTTP_BIND:-0.0.0.0}:${LOCATION_HTTP_PORT:-18080}:8080"
+    networks:
+      - location_internal
+
+volumes:
+  location_postgis_data:
+    name: wjx-location-postgis-data
+  location_rabbitmq_data:
+    name: wjx-location-rabbitmq-data
+
+networks:
+  location_internal:
+    name: wjx-location-internal

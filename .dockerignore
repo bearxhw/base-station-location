@@ -1,0 +1,10 @@
+.env
+*.log
+*.tar
+runtime/
+README.md
+start.sh
+stop.sh
+status.sh
+verify.sh
+db/

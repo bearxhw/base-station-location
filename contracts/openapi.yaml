@@ -1,0 +1,1764 @@
+openapi: 3.0.3
+info:
+  title: 消防接处警定位与动态热词 API
+  version: 1.0.0
+  description: 定位解析、人工确认和活跃热词查询的最小稳定契约。
+servers:
+  - url: /api/v1
+paths:
+  /location/resolutions:
+    post:
+      operationId: resolveLocation
+      summary: 接入一条位置证据并解析警情位置
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveLocationRequest"
+      responses:
+        "200":
+          description: 解析完成，结果可能需要人工确认
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationResolutionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "503":
+          $ref: "#/components/responses/DependencyUnavailable"
+  /location/resolutions/{resolutionId}:
+    get:
+      operationId: getLocationResolution
+      summary: 查询定位当前态及候选
+      parameters:
+        - $ref: "#/components/parameters/ResolutionId"
+      responses:
+        "200":
+          description: 定位结果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationResolutionResponse"
+        "404":
+          description: 定位记录不存在
+  /location/resolutions/{resolutionId}/confirm:
+    post:
+      operationId: confirmLocation
+      summary: 坐席选择候选、地图点选或修正地址
+      parameters:
+        - $ref: "#/components/parameters/ResolutionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmLocationRequest"
+      responses:
+        "200":
+          description: 最终确认结果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfirmedLocationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: version 已过期
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /location/resolutions/{resolutionId}/address-scope/query:
+    post:
+      operationId: queryLogicalAddressScope
+      summary: Query names or source types inside one location range
+      description: >-
+        Optional service-boundary API. Internal trusted services may query
+        dispatch_assist.logical_address_scope_item directly by scopeId.
+      parameters:
+        - $ref: "#/components/parameters/ResolutionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueryAddressScopeRequest"
+      responses:
+        "200":
+          description: Filtered candidates from the logical scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddressScopeQueryResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /address-scopes/{scopeId}/items:
+    post:
+      operationId: pageLogicalAddressScopeItems
+      summary: Traverse one logical address scope without copying rows
+      parameters:
+        - name: scopeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PageAddressScopeItemsRequest"
+      responses:
+        "200":
+          description: Stable cursor page from the global address inventory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddressScopePageResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /hotword-snapshots/active:
+    get:
+      operationId: getActiveHotwordSnapshot
+      summary: 获取指定范围的活跃热词快照
+      parameters:
+        - name: scopeType
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/ScopeType"
+        - name: scopeId
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 64
+        - name: provider
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 64
+        - name: If-None-Match
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 活跃热词
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActiveHotwordResponse"
+        "304":
+          description: 内容未变化
+        "404":
+          description: 该范围尚无活跃版本
+  /hotword-snapshots/build:
+    post:
+      operationId: buildAndActivateHotwordSnapshot
+      summary: 根据独立热词源构建并激活新快照
+      description: 仅由热词源变化、人工发布或热词定时任务调用，不由定位流程触发。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BuildHotwordSnapshotRequest"
+      responses:
+        "200":
+          description: 新快照已构建并激活
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActiveHotwordResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /hotword-libraries:
+    get:
+      operationId: listHotwordLibraries
+      summary: 查询十二类场所场景库和三类救援任务词包
+      description: 场所场景与救援任务是两个独立维度；本接口不读取定位结果。
+      responses:
+        "200":
+          description: 热词库目录
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HotwordLibraryListResponse"
+  /hotword-scene-matches:
+    post:
+      operationId: matchHotwordScenes
+      summary: Demo模拟要素机器人分别识别场所场景和救援任务
+      description: 仅用于Demo和联调。生产会话装载接口直接消费既有要素机器人的多标签结果，不由热词服务识别场景。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MatchHotwordScenesRequest"
+      responses:
+        "200":
+          description: 双维识别结果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HotwordSceneMatchResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /hotword-compositions:
+    post:
+      operationId: composeHotwords
+      summary: 组合基础词、场所库和救援任务词包并按消费者切块
+      description: 相同规范词和类别只下发一次，保留全部来源库并取最高分加多库奖励。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ComposeHotwordsRequest"
+      responses:
+        "200":
+          description: 可直接交给消费者适配器的组合及切块摘要
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HotwordCompositionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /alarm-access-hotword-loads:
+    post:
+      operationId: mountAlarmAccessHotwords
+      summary: 报警接入时将已发布静态词库挂载到当前ASR会话
+      description: |
+        直接消费要素机器人输出的十二类场所多标签和三类救援任务多标签。
+        本操作只新增或调整会话与静态库的挂载关系，不修改静态词库内容或版本。
+        FunASR首次装载返回首个WebSocket控制消息所需的hotwords；标签变化时返回重新建连计划，
+        不宣称已经修改现有WebSocket。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MountSessionHotwordsRequest"
+      responses:
+        "200":
+          description: 会话词包装载计划
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionHotwordMountResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /hotword-load-plans:
+    post:
+      operationId: createHotwordLoadPlan
+      summary: 为指定消费者创建独立热词装载计划
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateHotwordLoadPlanRequest"
+      responses:
+        "200":
+          description: 已存在相同计划或新计划已创建
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HotwordLoadPlanResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "503":
+          $ref: "#/components/responses/DependencyUnavailable"
+  /hotword-load-plans/{loadPlanId}/ack:
+    post:
+      operationId: acknowledgeHotwordLoad
+      summary: 热词消费者回传装载结果
+      parameters:
+        - name: loadPlanId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HotwordLoadAckRequest"
+      responses:
+        "200":
+          description: 回执已幂等接收
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaseResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /demo/cell-library/convert-neighbors:
+    post:
+      operationId: convertGlobalCellLibrary
+      summary: 将全局基站地址库转换为邻区关系和邻近地址映射
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BuildNeighborLibraryRequest"
+      responses:
+        "200":
+          description: 转换结果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DemoResponse"
+  /demo/operator/location:
+    post:
+      operationId: simulateOperatorLocation
+      summary: 模拟运营商返回服务小区及可选邻区
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OperatorLocateRequest"
+      responses:
+        "200":
+          description: 模拟运营商结果及不可用字段
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DemoResponse"
+  /demo/hotword/deliver:
+    post:
+      operationId: simulateHotwordDelivery
+      summary: 模拟 Outbox 投递和三类消费者回执
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeliverHotwordRequest"
+      responses:
+        "200":
+          description: 消费者装载结果和 Outbox 事件
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DemoResponse"
+  /demo/outbox-events:
+    get:
+      operationId: listDemoOutboxEvents
+      summary: 查询模拟 Outbox 事件
+      responses:
+        "200":
+          description: 当前进程内的模拟事件
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DemoResponse"
+components:
+  parameters:
+    ResolutionId:
+      name: resolutionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    BadRequest:
+      description: 输入非法
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    DependencyUnavailable:
+      description: GIS、地址库或其他依赖暂不可用
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    BuildNeighborLibraryRequest:
+      type: object
+      required:
+        - requestId
+        - maxDistanceMeters
+        - maxNeighbors
+        - sameOperatorAndRatOnly
+      properties:
+        requestId:
+          type: string
+        maxDistanceMeters:
+          type: number
+          format: double
+          exclusiveMinimum: true
+          minimum: 0
+        maxNeighbors:
+          type: integer
+          minimum: 1
+          maximum: 32
+        sameOperatorAndRatOnly:
+          type: boolean
+    OperatorLocateRequest:
+      type: object
+      required: [requestId, sessionId, callerHash, operatorCode]
+      properties:
+        requestId:
+          type: string
+        sessionId:
+          type: string
+        callerHash:
+          type: string
+          description: 模拟脱敏号码哈希；以 -neighbor 结尾时返回上报邻区。
+        operatorCode:
+          type: string
+          enum: [CMCC]
+    DeliverHotwordRequest:
+      type: object
+      required: [requestId, scopeType, scopeId, provider]
+      properties:
+        requestId:
+          type: string
+        scopeType:
+          $ref: "#/components/schemas/ScopeType"
+        scopeId:
+          type: string
+        provider:
+          type: string
+    DemoResponse:
+      allOf:
+        - $ref: "#/components/schemas/BaseResponse"
+        - type: object
+          properties:
+            data:
+              type: object
+              additionalProperties: true
+    Coordinate:
+      type: object
+      required:
+        - longitude
+        - latitude
+        - coordinateSystem
+        - capturedAt
+      properties:
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        coordinateSystem:
+          type: string
+          enum: [WGS84]
+          description: 当前Demo稳定接口仅接收WGS84；生产坐标适配器应先转换并审计原始坐标及算法版本。
+        accuracyMeters:
+          type: number
+          format: double
+          minimum: 0
+        capturedAt:
+          type: string
+          format: date-time
+    ResolveLocationRequest:
+      type: object
+      required:
+        - requestId
+        - sessionId
+      anyOf:
+        - required: [rawAddress]
+        - required: [unitName]
+        - required: [coordinate]
+        - required: [telcoLocation]
+        - required: [cellPositioning]
+        - required: [baseStationCoordinate]
+      properties:
+        requestId:
+          type: string
+          maxLength: 128
+        sessionId:
+          type: string
+          maxLength: 64
+        alarmId:
+          type: string
+          maxLength: 64
+        sourceType:
+          type: string
+          enum: [TELCO, CTI_COORDINATE, INTERNET, IOT, ASR, OPERATOR]
+        rawAddress:
+          type: string
+          maxLength: 1024
+        unitName:
+          type: string
+          maxLength: 256
+        coordinate:
+          $ref: "#/components/schemas/Coordinate"
+          description: 报警人或终端位置证据；不是基站站址。
+        baseStationCoordinate:
+          allOf:
+            - $ref: "#/components/schemas/Coordinate"
+          description: |
+            本项目当前基站定位主输入。表示本次来电对应基站的WGS84站址坐标，
+            经度为X、纬度为Y。未传radiusMeters时，服务端在50米容差内命中全局基站库
+            并加载空间派生邻区；传入radiusMeters时，直接以该点为圆心生成圆形检索范围。
+        radiusMeters:
+          type: number
+          format: double
+          minimum: 10
+          maximum: 20000
+          example: 1000
+          description: |
+            人工可调的圆形检索半径，单位米，必须与baseStationCoordinate同时传入。
+            传入后启用BASE_STATION_RADIUS_CIRCLE模式并跳过邻区融合；不传则保持原邻区融合模式。
+            10公里以上属于应急大范围检索并返回LARGE_MANUAL_RADIUS_USED告警，硬上限为20公里。
+        telcoLocation:
+          $ref: "#/components/schemas/TelcoLocation"
+        cellPositioning:
+          $ref: "#/components/schemas/CellPositioning"
+        asrConfidence:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+        sourceEventTime:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+          description: 服务端按来源执行字段白名单，禁止完整手机号、录音或凭证。
+    TelcoLocation:
+      type: object
+      required:
+        - providerCode
+        - resultType
+      properties:
+        providerCode:
+          type: string
+          maxLength: 64
+        resultType:
+          type: string
+          enum: [USER_ESTIMATE, CELL_COVERAGE, CELL_SITE_ONLY, UNAVAILABLE]
+        center:
+          $ref: "#/components/schemas/Coordinate"
+        uncertaintyRadiusMeters:
+          type: number
+          format: double
+          minimum: 0
+        uncertaintyArea:
+          type: object
+          additionalProperties: true
+          description: 可选 GeoJSON Polygon/MultiPolygon；服务端校验类型、SRID和有效性。
+        providerRequestId:
+          type: string
+          maxLength: 256
+        quality:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+    CellObservation:
+      type: object
+      required:
+        - rat
+        - mcc
+        - mnc
+        - areaCodeType
+        - areaCode
+        - cellId
+      properties:
+        rat:
+          type: string
+          enum: [GSM, WCDMA, LTE, NR]
+        mcc:
+          type: string
+          pattern: "^[0-9]{3}$"
+        mnc:
+          type: string
+          pattern: "^[0-9]{2,3}$"
+        areaCodeType:
+          type: string
+          enum: [LAC, TAC]
+        areaCode:
+          type: string
+          maxLength: 16
+        cellId:
+          type: string
+          maxLength: 32
+        pci:
+          type: integer
+          minimum: 0
+        rsrpDbm:
+          type: number
+          format: double
+        rsrqDb:
+          type: number
+          format: double
+        rssiDbm:
+          type: number
+          format: double
+        timingAdvance:
+          type: integer
+          minimum: 0
+        angleOfArrival:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMaximum: true
+          maximum: 360
+        observedAt:
+          type: string
+          format: date-time
+    ProviderPositionEstimate:
+      type: object
+      required: [coordinate, method]
+      properties:
+        coordinate:
+          $ref: "#/components/schemas/Coordinate"
+        method:
+          type: string
+          enum: [CELL_ID, E_CID, OTDOA, A_GNSS, OTHER]
+        confidence:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+    CellPositioning:
+      type: object
+      required:
+        - operatorCode
+        - servingCell
+      properties:
+        operatorCode:
+          type: string
+          maxLength: 32
+        servingCell:
+          $ref: "#/components/schemas/CellObservation"
+        neighborCells:
+          type: array
+          maxItems: 32
+          items:
+            $ref: "#/components/schemas/CellObservation"
+        providerEstimate:
+          $ref: "#/components/schemas/ProviderPositionEstimate"
+    LocationCandidate:
+      type: object
+      required:
+        - candidateId
+        - source
+        - displayAddress
+        - longitude
+        - latitude
+        - totalScore
+        - rank
+      properties:
+        candidateId:
+          type: string
+          format: uuid
+        source:
+          type: string
+          enum:
+            - STANDARD_ADDRESS
+            - ADDRESS_ALIAS
+            - POI
+            - ROAD
+            - GEO_RESOURCE
+            - EXTERNAL_GEOCODER
+        standardAddressCode:
+          type: string
+        displayAddress:
+          type: string
+        longitude:
+          type: number
+          format: double
+        latitude:
+          type: number
+          format: double
+        textScore:
+          type: number
+          format: double
+        distanceMeters:
+          type: number
+          format: double
+        totalScore:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+        rank:
+          type: integer
+          minimum: 1
+        fireJurisdictionId:
+          type: string
+          format: uuid
+        primaryStationId:
+          type: string
+    LocationResolutionData:
+      type: object
+      required:
+        - resolutionId
+        - sessionId
+        - status
+        - modelVersion
+        - candidates
+        - version
+      properties:
+        resolutionId:
+          type: string
+          format: uuid
+        sessionId:
+          type: string
+        status:
+          type: string
+          enum:
+            - RESOLVING
+            - NEEDS_CONFIRMATION
+            - AUTO_CONFIRMED
+            - MANUAL_CONFIRMED
+            - UNRESOLVED
+        decisionReason:
+          type: string
+        modelVersion:
+          type: string
+        positioningMethod:
+          type: string
+          enum:
+            - UNAVAILABLE
+            - CELL_ID
+            - CELL_REPORTED_NEIGHBOR_EVIDENCE
+            - BASE_STATION_COORDINATE
+            - BASE_STATION_RADIUS_CIRCLE
+            - USER_ESTIMATE
+            - CELL_COVERAGE
+        evidenceLevel:
+          type: string
+          enum:
+            - L0_UNAVAILABLE
+            - L1_CELL_ID_ONLY
+            - L1_BASE_STATION_COORDINATE_ONLY
+            - L2_REPORTED_NEIGHBOR
+            - L3_OPERATOR_ESTIMATE
+            - L4_USER_ESTIMATE
+        estimatedLongitude:
+          type: number
+          format: double
+          description: 兼容字段，表示hard_area中心经度，不是报警人精确坐标。
+        estimatedLatitude:
+          type: number
+          format: double
+          description: 兼容字段，表示hard_area中心纬度。
+        estimatedRadiusMeters:
+          type: number
+          format: double
+          description: 兼容字段，表示有证据支持的hard_area半径。
+        searchLongitude:
+          type: number
+          format: double
+          description: search_area中心经度。
+        searchLatitude:
+          type: number
+          format: double
+          description: search_area中心纬度。
+        searchRadiusMeters:
+          type: number
+          format: double
+          description: 仅用于地址召回的search_area半径，可由人工radiusMeters直接指定或由邻区融合扩大。
+        neighborSource:
+          type: string
+          enum: [NONE, REPORTED, OPERATOR, SPATIAL_DERIVED]
+          description: >-
+            实际参与本次定位的邻区来源。NONE表示没有可用的不同物理站址邻区，
+            此时search_area不会被邻区扩大；SPATIAL_DERIVED仅表示由离线空间拓扑派生，
+            不代表本次通话的真实无线测量。
+        neighborCellIds:
+          type: array
+          items:
+            type: string
+        warnings:
+          type: array
+          description: >-
+            定位风险提示。SPATIAL_NEIGHBOR_COUNT_BELOW_TARGET表示仅找到1至5个不同站址；
+            SPATIAL_NEIGHBORS_NOT_AVAILABLE表示未找到可用邻区；
+            SEARCH_AREA_EXPANDED_BY_SPATIAL_NEIGHBORS仅在至少一个空间邻区实际参与融合时出现；
+            SPATIAL_NEIGHBORS_ARE_NOT_CALL_EVIDENCE表示空间邻区不是本次通话证据；
+            MANUAL_RADIUS_CIRCLE_USED表示采用人工半径圆形范围，NEIGHBOR_FUSION_SKIPPED表示本次跳过邻区融合；
+            LARGE_MANUAL_RADIUS_USED表示人工半径超过10公里，可能返回大量地址。
+          items:
+            type: string
+        candidates:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/LocationCandidate"
+        addressScopeRef:
+          $ref: "#/components/schemas/AddressScopeRef"
+        version:
+          type: integer
+          minimum: 1
+    LocationResolutionResponse:
+      allOf:
+        - $ref: "#/components/schemas/BaseResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/LocationResolutionData"
+    AddressScopeRef:
+      type: object
+      required:
+        - scopeId
+        - locationResolutionId
+        - locationResolutionVersion
+        - inventoryVersion
+      properties:
+        scopeId:
+          type: string
+          format: uuid
+        locationResolutionId:
+          type: string
+          format: uuid
+        locationResolutionVersion:
+          type: integer
+          minimum: 1
+        inventoryVersion:
+          type: string
+          maxLength: 64
+        scopeStatus:
+          type: string
+          enum: [UNKNOWN, READY, EMPTY]
+          description: >-
+            READY means at least one address candidate exists; EMPTY means the
+            handle is valid but its spatial result is empty; UNKNOWN is only
+            possible for a legacy handle created before this field existed.
+            Older responses may omit this additive field and must be treated
+            as UNKNOWN.
+    PageAddressScopeItemsRequest:
+      type: object
+      required: [requestId]
+      properties:
+        requestId:
+          type: string
+          maxLength: 128
+        sourceTypes:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            enum: [BUILDING, AOI, POI, LOI]
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 5000
+          default: 100
+        cursor:
+          type: string
+          description: Opaque cursor returned by the previous page.
+    QueryAddressScopeRequest:
+      type: object
+      required:
+        - requestId
+        - locationResolutionVersion
+        - inventoryVersion
+      properties:
+        requestId:
+          type: string
+        locationResolutionVersion:
+          type: integer
+          minimum: 1
+        inventoryVersion:
+          type: string
+        queryText:
+          type: string
+        sourceTypes:
+          type: array
+          items:
+            type: string
+            enum: [BUILDING, AOI, POI, LOI]
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 5000
+        includeExactCount:
+          type: boolean
+          default: false
+    AddressScopeCandidate:
+      type: object
+      required:
+        - inventoryId
+        - sourceType
+        - sourceId
+        - standardName
+        - hitLevel
+        - longitude
+        - latitude
+      properties:
+        inventoryId:
+          type: string
+          format: uuid
+        sourceType:
+          type: string
+          enum: [BUILDING, AOI, POI, LOI]
+        sourceId:
+          type: string
+        standardName:
+          type: string
+        shortName:
+          type: string
+        fullAddress:
+          type: string
+        aoiName:
+          type: string
+        roadName:
+          type: string
+        hitLevel:
+          type: string
+          enum: [HARD_AREA, SEARCH_AREA]
+        matchedTerm:
+          type: string
+        matchedTermType:
+          type: string
+        matchedTermWeight:
+          type: integer
+        longitude:
+          type: number
+          format: double
+        latitude:
+          type: number
+          format: double
+    AddressScopePage:
+      type: object
+      required: [addressScopeRef, items, hasMore, warnings]
+      properties:
+        addressScopeRef:
+          $ref: "#/components/schemas/AddressScopeRef"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AddressScopeCandidate"
+        nextCursor:
+          type: string
+        hasMore:
+          type: boolean
+        warnings:
+          type: array
+          items:
+            type: string
+    AddressScopePageResponse:
+      allOf:
+        - $ref: "#/components/schemas/BaseResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/AddressScopePage"
+    AddressScopeQueryResult:
+      type: object
+      properties:
+        locationResolutionId:
+          type: string
+          format: uuid
+        locationResolutionVersion:
+          type: integer
+        inventoryVersion:
+          type: string
+        queryText:
+          type: string
+        countStatus:
+          type: string
+          enum: [NOT_REQUESTED, EXACT]
+        totalMatchCount:
+          type: integer
+          format: int64
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AddressScopeCandidate"
+        truncated:
+          type: boolean
+        warnings:
+          type: array
+          items:
+            type: string
+    AddressScopeQueryResponse:
+      allOf:
+        - $ref: "#/components/schemas/BaseResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/AddressScopeQueryResult"
+    AddressScopeLocationScope:
+      type: object
+      description: >-
+        Final normalized search scope used to create addressScopeRef. The
+        current producer always emits it; consumers keep it optional only for
+        replay compatibility with messages produced before 2026-08-06.
+      required:
+        - centerLongitude
+        - centerLatitude
+        - radiusMeters
+        - coordinateSystem
+        - shapeType
+        - positioningMethod
+        - evidenceLevel
+      properties:
+        centerLongitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+        centerLatitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        radiusMeters:
+          type: number
+          format: double
+          exclusiveMinimum: 0
+        coordinateSystem:
+          type: string
+          enum: [WGS84]
+        shapeType:
+          type: string
+          enum: [CIRCLE, MULTI_CIRCLE_UNION]
+        positioningMethod:
+          type: string
+        evidenceLevel:
+          type: string
+    AddressScopeReadyEventData:
+      type: object
+      description: >-
+        MQ/Event Bus data contract. It contains the reusable handle and final
+        normalized search-scope metadata, but deliberately contains no address
+        items.
+      required:
+        - eventId
+        - eventType
+        - schemaVersion
+        - occurredAt
+        - requestId
+        - sessionId
+        - addressScopeRef
+        - itemsPath
+        - queryPath
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        eventType:
+          type: string
+          enum: [address.scope.ready.v1]
+        schemaVersion:
+          type: string
+          enum: ["1.0"]
+        occurredAt:
+          type: string
+          format: date-time
+        requestId:
+          type: string
+        sessionId:
+          type: string
+        alarmId:
+          type: string
+        addressScopeRef:
+          $ref: "#/components/schemas/AddressScopeRef"
+        locationScope:
+          $ref: "#/components/schemas/AddressScopeLocationScope"
+        itemsPath:
+          type: string
+        queryPath:
+          type: string
+    ConfirmLocationRequest:
+      type: object
+      required:
+        - requestId
+        - version
+        - confirmationType
+        - operatorId
+        - reason
+      properties:
+        requestId:
+          type: string
+          maxLength: 128
+        version:
+          type: integer
+          minimum: 1
+        confirmationType:
+          type: string
+          enum: [CANDIDATE_SELECTED, MAP_PICKED, ADDRESS_CORRECTED]
+        candidateId:
+          type: string
+          format: uuid
+        manualPoint:
+          $ref: "#/components/schemas/Coordinate"
+        manualAddress:
+          type: string
+          maxLength: 512
+        operatorId:
+          type: string
+          maxLength: 64
+        reason:
+          type: string
+          maxLength: 512
+    ConfirmedLocation:
+      type: object
+      required:
+        - resolutionId
+        - displayAddress
+        - longitude
+        - latitude
+        - coordinateSystem
+        - confirmedBy
+        - confirmedAt
+        - version
+      properties:
+        resolutionId:
+          type: string
+          format: uuid
+        standardAddressCode:
+          type: string
+        displayAddress:
+          type: string
+        longitude:
+          type: number
+          format: double
+        latitude:
+          type: number
+          format: double
+        coordinateSystem:
+          type: string
+          enum: [WGS84]
+        adminDivisionCode:
+          type: string
+        fireJurisdictionId:
+          type: string
+          format: uuid
+        primaryStationId:
+          type: string
+        confirmedBy:
+          type: string
+          enum: [AUTO, OPERATOR]
+        confirmedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+    ConfirmedLocationResponse:
+      allOf:
+        - $ref: "#/components/schemas/BaseResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/ConfirmedLocation"
+    HotwordLibrary:
+      type: object
+      required: [libraryCode, libraryName, dimension]
+      properties:
+        libraryCode:
+          type: string
+          example: EDUCATION_TRAINING
+        libraryName:
+          type: string
+          example: 教育培训
+        dimension:
+          type: string
+          enum: [PLACE_SCENE, RESCUE_TASK]
+    HotwordLibraryListResponse:
+      allOf:
+        - $ref: "#/components/schemas/BaseResponse"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/HotwordLibrary"
+    SceneSignals:
+      type: object
+      required: [finalTranscript]
+      properties:
+        finalTranscript:
+          type: string
+          example: 示例大学学生宿舍五楼起火，有两名学生被困
+        structuredElements:
+          type: object
+          additionalProperties: true
+          example:
+            organizationType: 大学
+            buildingType: 宿舍
+            fireState: 起火
+    SceneMatchPolicy:
+      type: object
+      properties:
+        placeEnterThreshold:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          default: 0.65
+        taskAuxiliaryThreshold:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          default: 0.75
+        maxPlaceLibrariesForAsr:
+          type: integer
+          minimum: 1
+          default: 3
+    MatchHotwordScenesRequest:
+      type: object
+      required: [requestId, sessionId, signals]
+      properties:
+        requestId:
+          type: string
+        sessionId:
+          type: string
+        signals:
+          $ref: "#/components/schemas/SceneSignals"
+        confirmedBusinessTask:
+          type: string
+          enum: [FIRE_FIGHTING, SOCIAL_ASSISTANCE, EMERGENCY_RESCUE]
+        policy:
+          $ref: "#/components/schemas/SceneMatchPolicy"
+    SceneMatch:
+      type: object
+      required: [code, name, dimension, score, evidence]
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        dimension:
+          type: string
+          enum: [PLACE_SCENE, RESCUE_TASK]
+        score:
+          type: number
+          format: double
+        evidence:
+          type: array
+          items:
+            type: string
+    HotwordSceneMatch:
+      type: object
+      required:
+        - matchId
+        - sessionId
+        - placeSceneMatches
+        - rescueTaskMatches
+        - suggestedPrimaryRescueTask
+        - primaryRescueTask
+        - auxiliaryTaskPacks
+        - selectedForAsr
+        - ruleVersion
+      properties:
+        matchId:
+          type: string
+        sessionId:
+          type: string
+        placeSceneMatches:
+          type: array
+          items:
+            $ref: "#/components/schemas/SceneMatch"
+        rescueTaskMatches:
+          type: array
+          items:
+            $ref: "#/components/schemas/SceneMatch"
+        suggestedPrimaryRescueTask:
+          type: string
+        primaryRescueTask:
+          type: string
+        auxiliaryTaskPacks:
+          type: array
+          items:
+            type: string
+        selectedForAsr:
+          type: array
+          items:
+            type: string
+        ruleVersion:
+          type: string
+    HotwordSceneMatchResponse:
+      allOf:
+        - $ref: "#/components/schemas/BaseResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/HotwordSceneMatch"
+    ComposeHotwordsRequest:
+      type: object
+      required:
+        - requestId
+        - sessionId
+        - scopeType
+        - scopeId
+        - provider
+        - consumer
+        - selectedPlaceLibraries
+        - primaryRescueTask
+      properties:
+        requestId:
+          type: string
+        sessionId:
+          type: string
+        scopeType:
+          $ref: "#/components/schemas/ScopeType"
+        scopeId:
+          type: string
+        provider:
+          type: string
+        consumer:
+          type: string
+          enum: [ASR, ELEMENT_EXTRACTOR, ADDRESS_ROBOT]
+        selectedPlaceLibraries:
+          type: array
+          items:
+            type: string
+        primaryRescueTask:
+          type: string
+        auxiliaryTaskPacks:
+          type: array
+          items:
+            type: string
+        baseWords:
+          type: array
+          items:
+            $ref: "#/components/schemas/HotwordEntry"
+        maxTermsPerChunk:
+          type: integer
+          minimum: 1
+          default: 4
+    ComposedHotwordEntry:
+      type: object
+      required: [word, category, internalScore, libraryCodes]
+      properties:
+        word:
+          type: string
+        category:
+          type: string
+        internalScore:
+          type: integer
+        libraryCodes:
+          type: array
+          items:
+            type: string
+    HotwordPayloadChunk:
+      type: object
+      required: [index, termCount, checksum]
+      properties:
+        index:
+          type: integer
+        termCount:
+          type: integer
+        checksum:
+          type: string
+    HotwordComposition:
+      type: object
+      required:
+        - compositionKey
+        - sessionId
+        - consumer
+        - componentLibraries
+        - beforeDedupTermCount
+        - afterDedupTermCount
+        - chunks
+        - payloadChecksum
+        - entries
+      properties:
+        compositionKey:
+          type: string
+        sessionId:
+          type: string
+        consumer:
+          type: string
+        componentLibraries:
+          type: array
+          items:
+            type: string
+        beforeDedupTermCount:
+          type: integer
+        afterDedupTermCount:
+          type: integer
+        chunks:
+          type: array
+          items:
+            $ref: "#/components/schemas/HotwordPayloadChunk"
+        payloadChecksum:
+          type: string
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/ComposedHotwordEntry"
+    HotwordCompositionResponse:
+      allOf:
+        - $ref: "#/components/schemas/BaseResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/HotwordComposition"
+    ElementSceneLabel:
+      type: object
+      required: [code, confidence]
+      properties:
+        code:
+          type: string
+          example: EDUCATION_TRAINING
+        confidence:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+        evidence:
+          type: array
+          items:
+            type: string
+    SessionMountPolicy:
+      type: object
+      properties:
+        placeThreshold:
+          type: number
+          format: double
+          default: 0.65
+        taskThreshold:
+          type: number
+          format: double
+          default: 0.65
+        maxPlaceLibraries:
+          type: integer
+          minimum: 1
+          default: 4
+        maxTaskLibraries:
+          type: integer
+          minimum: 1
+          default: 3
+        maxSessionTerms:
+          type: integer
+          minimum: 1
+          default: 200
+          description: ASR词面去重后的会话Top-K上限。
+        maxTermsPerChunk:
+          type: integer
+          minimum: 1
+          default: 500
+    MountSessionHotwordsRequest:
+      type: object
+      required:
+        - requestId
+        - sessionId
+        - elementVersion
+        - provider
+        - consumerInstance
+        - placeSceneLabels
+        - rescueTaskLabels
+      properties:
+        requestId:
+          type: string
+        sessionId:
+          type: string
+        alarmId:
+          type: string
+        elementVersion:
+          type: integer
+          format: int64
+          minimum: 1
+        provider:
+          type: string
+          enum: [FUNASR, DEMO_ASR]
+        consumerInstance:
+          type: string
+        placeSceneLabels:
+          type: array
+          items:
+            $ref: "#/components/schemas/ElementSceneLabel"
+        rescueTaskLabels:
+          type: array
+          items:
+            $ref: "#/components/schemas/ElementSceneLabel"
+        baseWords:
+          type: array
+          description: Demo模拟的已发布基础词；生产由静态基础快照读取。
+          items:
+            $ref: "#/components/schemas/HotwordEntry"
+        policy:
+          $ref: "#/components/schemas/SessionMountPolicy"
+    StaticLibraryMount:
+      type: object
+      required: [libraryCode, dimension, staticVersion, bindingStatus]
+      properties:
+        libraryCode:
+          type: string
+        dimension:
+          type: string
+          enum: [PLACE_SCENE, RESCUE_TASK]
+        staticVersion:
+          type: integer
+        bindingStatus:
+          type: string
+          enum: [SELECTED]
+    SessionHotwordMount:
+      type: object
+      required:
+        - mountId
+        - sessionId
+        - elementVersion
+        - mountVersion
+        - operation
+        - status
+        - mountedLibraries
+        - payloadChecksum
+        - providerPayload
+        - warnings
+      properties:
+        mountId:
+          type: string
+          format: uuid
+        sessionId:
+          type: string
+        elementVersion:
+          type: integer
+          format: int64
+        mountVersion:
+          type: integer
+        operation:
+          type: string
+          enum: [INITIAL_LOAD, UNCHANGED, REBIND, RECONNECT_REQUIRED]
+        status:
+          type: string
+          enum: [MOUNT_READY, PENDING_RECONNECT]
+        mountedLibraries:
+          type: array
+          items:
+            $ref: "#/components/schemas/StaticLibraryMount"
+        beforeDedupTermCount:
+          type: integer
+        afterDedupTermCount:
+          type: integer
+        payloadChecksum:
+          type: string
+        providerPayload:
+          type: object
+          additionalProperties: true
+        warnings:
+          type: array
+          items:
+            type: string
+    SessionHotwordMountResponse:
+      allOf:
+        - $ref: "#/components/schemas/BaseResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/SessionHotwordMount"
+    ScopeType:
+      type: string
+      enum: [GLOBAL, CITY, DISTRICT, STATION]
+    HotwordEntry:
+      type: object
+      required: [word, category, weight]
+      properties:
+        word:
+          type: string
+        category:
+          type: string
+          enum:
+            - ADDRESS
+            - ROAD
+            - KEY_UNIT
+            - FIRE_RESOURCE
+            - INCIDENT_TYPE
+            - EQUIPMENT
+            - MANUAL
+        weight:
+          type: integer
+          minimum: 0
+    BuildHotwordSnapshotRequest:
+      type: object
+      required: [requestId, scopeType, scopeId, provider, reason, words]
+      properties:
+        requestId:
+          type: string
+          maxLength: 128
+        scopeType:
+          $ref: "#/components/schemas/ScopeType"
+        scopeId:
+          type: string
+          maxLength: 64
+        provider:
+          type: string
+          maxLength: 64
+        reason:
+          type: string
+          maxLength: 256
+        words:
+          type: array
+          minItems: 1
+          maxItems: 10000
+          items:
+            $ref: "#/components/schemas/HotwordEntry"
+    ActiveHotword:
+      type: object
+      required:
+        - snapshotId
+        - versionNo
+        - etag
+        - effectiveAt
+        - entries
+      properties:
+        snapshotId:
+          type: string
+          format: uuid
+        versionNo:
+          type: integer
+        etag:
+          type: string
+        vendorVocabularyId:
+          type: string
+        effectiveAt:
+          type: string
+          format: date-time
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/HotwordEntry"
+    ActiveHotwordResponse:
+      allOf:
+        - $ref: "#/components/schemas/BaseResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/ActiveHotword"
+    CreateHotwordLoadPlanRequest:
+      type: object
+      required:
+        - requestId
+        - consumer
+        - consumerInstance
+        - scopeType
+        - scopeId
+        - trigger
+      properties:
+        requestId:
+          type: string
+          maxLength: 128
+        consumer:
+          type: string
+          enum: [ASR, ELEMENT_EXTRACTOR, ADDRESS_ROBOT]
+        consumerInstance:
+          type: string
+          maxLength: 128
+        scopeType:
+          $ref: "#/components/schemas/ScopeType"
+        scopeId:
+          type: string
+          maxLength: 64
+        provider:
+          type: string
+          maxLength: 64
+        trigger:
+          type: string
+          enum:
+            - SNAPSHOT_ACTIVATED
+            - CONSUMER_RECONNECTED
+            - MANUAL_RELOAD
+            - RECONCILIATION
+    HotwordLoadPlan:
+      type: object
+      required:
+        - loadPlanId
+        - consumer
+        - consumerInstance
+        - snapshotId
+        - versionNo
+        - deliveryMode
+        - payloadChecksum
+        - status
+      properties:
+        loadPlanId:
+          type: string
+          format: uuid
+        consumer:
+          type: string
+          enum: [ASR, ELEMENT_EXTRACTOR, ADDRESS_ROBOT]
+        consumerInstance:
+          type: string
+        snapshotId:
+          type: string
+          format: uuid
+        versionNo:
+          type: integer
+          minimum: 1
+        deliveryMode:
+          type: string
+          enum: [VOCABULARY_ID, FULL_SNAPSHOT, DELTA]
+        payloadChecksum:
+          type: string
+        externalVersion:
+          type: string
+        status:
+          type: string
+          enum: [REQUESTED, LOADING, LOADED, FAILED, SUPERSEDED]
+    HotwordLoadPlanResponse:
+      allOf:
+        - $ref: "#/components/schemas/BaseResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/HotwordLoadPlan"
+    HotwordLoadAckRequest:
+      type: object
+      required:
+        - requestId
+        - consumerInstance
+        - status
+        - acknowledgedAt
+      properties:
+        requestId:
+          type: string
+          maxLength: 128
+        consumerInstance:
+          type: string
+          maxLength: 128
+        status:
+          type: string
+          enum: [LOADED, FAILED]
+        vendorLoadId:
+          type: string
+          maxLength: 256
+        errorCode:
+          type: string
+          maxLength: 128
+        errorMessage:
+          type: string
+          maxLength: 1024
+        acknowledgedAt:
+          type: string
+          format: date-time
+    BaseResponse:
+      type: object
+      required: [success, code, message, requestId]
+      properties:
+        success:
+          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        requestId:
+          type: string
+    ErrorResponse:
+      allOf:
+        - $ref: "#/components/schemas/BaseResponse"
+        - type: object
+          properties:
+            data:
+              nullable: true

@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:telewave:dispatch-assist:address.scope.ready.v1",
+  "title": "Address Scope Ready CloudEvent V1",
+  "description": "Reusable logical address scope handle plus its normalized search-scope metadata; no address item array is carried.",
+  "type": "object",
+  "required": [
+    "id",
+    "specversion",
+    "source",
+    "type",
+    "time",
+    "subject",
+    "datacontenttype",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "specversion": {
+      "const": "1.0"
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "type": {
+      "const": "address.scope.ready.v1"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "subject": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "datacontenttype": {
+      "const": "application/json"
+    },
+    "data": {
+      "type": "object",
+      "required": [
+        "eventId",
+        "eventType",
+        "schemaVersion",
+        "occurredAt",
+        "requestId",
+        "sessionId",
+        "addressScopeRef",
+        "itemsPath",
+        "queryPath"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "eventType": {
+          "const": "address.scope.ready.v1"
+        },
+        "schemaVersion": {
+          "const": "1.0"
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "alarmId": {
+          "type": ["string", "null"]
+        },
+        "addressScopeRef": {
+          "type": "object",
+          "required": [
+            "scopeId",
+            "locationResolutionId",
+            "locationResolutionVersion",
+            "inventoryVersion"
+          ],
+          "properties": {
+            "scopeId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "locationResolutionId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "locationResolutionVersion": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "inventoryVersion": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "scopeStatus": {
+              "type": "string",
+              "enum": ["UNKNOWN", "READY", "EMPTY"]
+            }
+          },
+          "additionalProperties": true
+        },
+        "locationScope": {
+          "description": "Always emitted by the current producer; optional only for replay compatibility with pre-2026-08-06 messages.",
+          "type": "object",
+          "required": [
+            "centerLongitude",
+            "centerLatitude",
+            "radiusMeters",
+            "coordinateSystem",
+            "shapeType",
+            "positioningMethod",
+            "evidenceLevel"
+          ],
+          "properties": {
+            "centerLongitude": {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180
+            },
+            "centerLatitude": {
+              "type": "number",
+              "minimum": -90,
+              "maximum": 90
+            },
+            "radiusMeters": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "coordinateSystem": {
+              "const": "WGS84"
+            },
+            "shapeType": {
+              "enum": ["CIRCLE", "MULTI_CIRCLE_UNION"]
+            },
+            "positioningMethod": {
+              "type": "string",
+              "minLength": 1
+            },
+            "evidenceLevel": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": true
+        },
+        "itemsPath": {
+          "type": "string",
+          "pattern": "^/api/v1/address-scopes/[0-9a-fA-F-]+/items$"
+        },
+        "queryPath": {
+          "type": "string",
+          "pattern": "^/api/v1/location/resolutions/[0-9a-fA-F-]+/address-scope/query$"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
